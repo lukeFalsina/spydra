@@ -14,6 +14,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import datetime
 import json
 import math
 import requests
@@ -27,8 +28,8 @@ METADATA_HEADERS = {'Metadata-Flavor': 'Google'}
 
 GCLOUD_PATH = "gcloud"
 
-RM_URL = 'http://' + socket.gethostname() + ':8088/ws/v1/cluster/metrics'
-
+def print_time(s):
+    print datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f') + ': ' + s
 
 def metadata(m):
     url = METADATA_URL + m
@@ -43,6 +44,10 @@ def metadata(m):
         r.raise_for_status()
 
         return r.text
+
+
+cluster = metadata('instance/attributes/dataproc-cluster-name')
+RM_URL = 'http://' + cluster + '-m' + ':8088/ws/v1/cluster/metrics'
 
 
 def cluster_metrics():
@@ -68,14 +73,13 @@ def worker_count():
 def scale(cluster, worker_count):
     gcloud_command = [GCLOUD_PATH, "dataproc", "clusters", "update", cluster,
                       "--num-preemptible-workers=" + str(worker_count), "--quiet"]
-    print "Executing: " + str(gcloud_command)
+    print_time("Executing: " + str(gcloud_command))
     subprocess.call(gcloud_command)
 
 
 autoscaler_max = int(metadata('instance/attributes/autoscaler-max'))
 factor = float(metadata('instance/attributes/autoscaler-factor'))
 downscale = metadata('instance/attributes/autoscaler-mode') == 'downscale'
-cluster = metadata('instance/attributes/dataproc-cluster-name')
 
 current_preemtable_count = preemptable_worker_count()
 current_worker_count = worker_count()
@@ -88,7 +92,7 @@ containers_allocated = int(metrics['containersAllocated'])
 containers_pending = int(metrics['containersPending'])
 
 if active_nodes == 0 or total_mb == 0 or containers_allocated == 0 or allocated_mb == 0:
-    print "Nothing to do, exit"
+    print_time("Nothing to do, exit")
     sys.exit(0)
 
 container_size = allocated_mb / float(containers_allocated)
@@ -109,12 +113,12 @@ if current_preemtable_count == preemptable_nodes_required:
     sys.exit(0)
 
 if current_factor > factor and not downscale:
-    print "Downscaling is disabled, continue"
+    print_time("Downscaling is disabled, continue")
     sys.exit(0)
 
 if current_factor == factor:
-    print "Perfectly sized, continue"
+    print_time("Perfectly sized, continue")
     sys.exit(0)
 
-print "Decided to scale. Current factor is %s. Requiring %s nodes." % (current_factor, preemptable_nodes_required)
+print_time("Decided to scale. Current factor is %s. Requiring %s nodes." % (current_factor, preemptable_nodes_required))
 scale(cluster, preemptable_nodes_required)

@@ -16,10 +16,12 @@
 
 set -e
 
-INTERVAL=$(/usr/share/google/get_metadata_value attributes/autoscaler-interval || echo -1)
-ROLE=$(/usr/share/google/get_metadata_value attributes/dataproc-role)
-if [[ ${INTERVAL} != -1 && "${ROLE}" == 'Master' ]]; then
-  gsutil cp ${versioned-init-action-uri}/autoscaler.py /usr/local/bin/autoscaler
+INTERVAL=$(curl -f -s -H Metadata-Flavor:Google http://metadata/computeMetadata/v1/instance/attributes/autoscaler-interval || echo -1)
+INIT_ACTION_BUCKET=$(curl -f -s -H Metadata-Flavor:Google http://metadata/computeMetadata/v1/instance/attributes/init-action-bucket)
+
+if [[ ${INTERVAL} != -1 ]]; then
+  gsutil cp gs://${INIT_ACTION_BUCKET}/autoscaler/autoscaler.py /usr/local/bin/autoscaler
   chmod +x /usr/local/bin/autoscaler
-  crontab -l | { cat; echo "*/${INTERVAL} * * * * /usr/local/bin/autoscaler"; } | crontab -
+  touch /var/log/autoscaler.log
+  crontab -l | { cat; echo "*/${INTERVAL} * * * * /usr/local/bin/autoscaler >> /var/log/autoscaler.log 2>&1"; } | crontab -
 fi
